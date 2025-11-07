@@ -6,16 +6,26 @@ from dotenv import load_dotenv # Import dotenv
 import requests # For fetching article content from URLs
 from bs4 import BeautifulSoup # For parsing the article HTML
 
+# --- NEW: Imports for Email ---
+import smtplib # For sending the email
+from email.message import EmailMessage # For formatting the email
+import ssl # For a secure connection
+from datetime import date # To add the date to the subject line
+# import certifi # <-- REMOVED: Not needed for the unverified context fix
+
+
 # --- STEP 1: SETUP ---
 
 # Load API keys from one .env file
 # Make sure to install the libraries:
 # pip install python-dotenv newsapi-python openai requests beautifulsoup4
-
 # Load variables from the .env file in the same folder
 # This file should contain:
 # NEWS_API_KEY='your_key_here'
 # OPENAI_API_KEY='your_key_here'
+# EMAIL_ADDRESS='your.email@gmail.com'
+# EMAIL_PASSWORD='your-16-character-app-password'
+# RECIPIENT_EMAIL='email.to.send.to@example.com'
 load_dotenv()
 
 
@@ -42,6 +52,21 @@ if not OPENAI_API_KEY:
     print("----------------------------------------")
     exit()
 
+# --- NEW: Email Setup ---
+EMAIL_ADDRESS = os.getenv('SENDER_EMAIL') # UPDATED from 'EMAIL_ADDRESS'
+EMAIL_PASSWORD = os.getenv('SENDER_APP_PASSWORD') # UPDATED from 'EMAIL_PASSWORD'
+RECIPIENT_EMAIL = os.getenv('RECIPIENT_EMAIL')
+
+if not EMAIL_ADDRESS or not EMAIL_PASSWORD or not RECIPIENT_EMAIL:
+    print("--- ERROR: Email credentials not found ---")
+    print("Please check your '.env' file.")
+    print("It must contain:")
+    print("SENDER_EMAIL='your.email@gmail.com'") # UPDATED
+    print("SENDER_APP_PASSWORD='your-16-character-app-password'") # UPDATED
+    print("RECIPIENT_EMAIL='email.to.send.to@example.com'")
+    print("----------------------------------------")
+    exit()
+
 
 # Initialize the NewsAPI client
 try:
@@ -61,7 +86,7 @@ except Exception as e:
     print("Please double-check your OPENAI_API_KEY in the .env file.")
     exit()
 
-# --- NEW: Function to Scrape Article Text ---
+# --- Function to Scrape Article Text ---
 def get_article_text(url):
     """
     Fetches and extracts the main text content from a news article URL.
@@ -107,7 +132,7 @@ def get_article_text(url):
         print(f"  [Parse Error: {e}]")
         return None
 
-# --- NEW: Function to Summarize Text with OpenAI ---
+# --- Function to Summarize Text with OpenAI ---
 def summarize_text(text_to_summarize):
     """
     Sends text to the OpenAI API and returns a concise summary.
@@ -133,6 +158,53 @@ def summarize_text(text_to_summarize):
         return "Error: Could not summarize article."
 
 
+# --- NEW: Function to Send Email (Updated for HTML) ---
+def send_email(email_subject, plain_text_body, html_body, recipient_email):
+    """
+    Connects to the Gmail SMTP server and sends a multipart email
+    with both plain-text and HTML versions.
+    """
+    print(f"\nConnecting to email server to send to {recipient_email}...")
+    
+    # Create the email message object
+    msg = EmailMessage()
+    msg['Subject'] = email_subject
+    msg['From'] = EMAIL_ADDRESS
+    msg['To'] = recipient_email
+    
+    # Set the plain-text version (for email clients that don't support HTML)
+    msg.set_content(plain_text_body)
+    
+    # Set the HTML version
+    msg.add_alternative(html_body, subtype='html')
+
+    
+    # --- FIX 2 for [SSL: CERTIFICATE_VERIFY_FAILED] ---
+    # This error: "self-signed certificate in certificate chain"
+    # means you are likely on a network with traffic inspection (school, work)
+    # or an Antivirus is interfering.
+    # This fix tells Python *not* to verify the certificate.
+    # It is less secure, but often necessary on managed networks.
+    context = ssl._create_unverified_context()
+    # --- END FIX ---
+
+
+    try:
+        # Connect to Gmail's SMTP server
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465, context=context) as smtp:
+            smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+            smtp.send_message(msg)
+        print("Email sent successfully!")
+    except smtplib.SMTPException as e:
+        print(f"--- EMAIL ERROR ---")
+        print(f"Error: Unable to send email: {e}")
+        print("Please check:")
+        print("1. Your EMAIL_ADDRESS and EMAIL_PASSWORD (App Password) are correct in .env")
+        print("2. 2-Step Verification and App Passwords are set up correctly in Google.")
+    except Exception as e:
+        print(f"An unexpected error occurred during email sending: {e}")
+
+
 # --- STEP 2: MAKE THE API CALL (Updated) ---
 print("Fetching latest news for 'technology'...")
 try:
@@ -148,6 +220,10 @@ try:
     if top_headlines['status'] == 'ok':
         
         articles = top_headlines['articles']
+        
+        # --- NEW: Create lists for plain-text and HTML content ---
+        plain_text_summaries = []
+        html_summaries = []
         
         if not articles:
             print("No articles found for this topic.")
@@ -168,11 +244,94 @@ try:
                     print("  Summarizing with OpenAI...")
                     summary = summarize_text(article_text)
                     print(f"\n  SUMMARY:\n  {summary}\n")
+                    
+                    # --- NEW: Add summary to our email lists (Plain Text) ---
+                    plain_text_summaries.append(
+                        f"Title: {article['title']}\n"
+                        f"URL: {article['url']}\n\n"
+                        f"Summary: {summary}\n"
+                    )
+                    
+                    # --- NEW: Add summary to our email lists (HTML) ---
+                    html_summaries.append(f"""
+                    <div style="margin-bottom: 25px; padding-bottom: 25px; border-bottom: 1px solid #eeeeee;">
+                        <h2 style="margin: 0 0 10px 0; font-size: 22px; color: #333333;">
+                            {article['title']}
+                        </h2>
+                        <p style="margin: 0 0 15px 0; font-size: 16px; color: #555555; line-height: 1.6;">
+                            {summary}
+                        </p>
+                        <a href="{article['url']}" target="_blank" style="font-size: 14px; color: #007bff; text-decoration: none; font-weight: bold;">
+                            Read Full Article &rarr;
+                        </a>
+                    </div>
+                    """)
+                    
                 else:
                     print("  Skipping summary for this article (could not scrape text).")
                 # --- END NEW LOGIC ---
                 
                 print("-" * 20) # A separator for readability
+            
+            # --- NEW: After the loop, check if we have summaries to send ---
+            if plain_text_summaries:
+                # Format the email subject with today's date
+                today_str = date.today().strftime("%B %d, %Y")
+                email_subject = f"Your Tech News Summary - {today_str}"
+                
+                # --- Create the PLAIN-TEXT body ---
+                plain_text_body = "Here are your top tech stories:\n\n" + \
+                             "\n\n--------------------------\n\n".join(plain_text_summaries)
+                
+                # --- Create the HTML body ---
+                html_body = f"""
+                <html>
+                <head>
+                    <style>
+                        body {{
+                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+                            margin: 0;
+                            padding: 0;
+                            background-color: #f9f9f9;
+                        }}
+                        .container {{
+                            width: 90%;
+                            max-width: 650px;
+                            margin: 20px auto;
+                            padding: 30px;
+                            background-color: #ffffff;
+                            border: 1px solid #dddddd;
+                            border-radius: 8px;
+                        }}
+                        .header {{
+                            font-size: 28px;
+                            font-weight: bold;
+                            color: #222222;
+                            margin: 0 0 30px 0;
+                            padding-bottom: 20px;
+                            border-bottom: 2px solid #eeeeee;
+                        }}
+                        a {{
+                            color: #007bff;
+                            text-decoration: none;
+                        }}
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="header">
+                            Your Tech News Summary
+                        </div>
+                        {''.join(html_summaries)}
+                    </div>
+                </body>
+                </html>
+                """
+                
+                # Send the email with both versions
+                send_email(email_subject, plain_text_body, html_body, RECIPIENT_EMAIL)
+            else:
+                print("No summaries were generated, skipping email.")
 
     else:
         print(f"Error fetching news: {top_headlines.get('message')}")
