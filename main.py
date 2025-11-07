@@ -213,11 +213,14 @@ try:
     thirty_days_ago = (date.today() - timedelta(days=30)).isoformat()
     
     # Use /v2/everything to get top articles from the past month
-    top_headlines = newsapi.get_everything(q='technology',
-                                           from_param=thirty_days_ago, # Get articles from this date
-                                           language='en',
-                                           sort_by='popularity', # Get the most popular articles
-                                           page_size=5) # Still 5 for testing
+    # UPDATED: Set page_size=8 and broadened query
+    top_headlines = newsapi.get_everything(
+        q='(technology OR AI OR programming OR cyber security)', # Broader query
+        from_param=thirty_days_ago, # Get articles from this date
+        language='en',
+        sort_by='popularity', # Get the most popular articles
+        page_size=8 # Get 8 articles
+    )
 
     # --- STEP 3: PROCESS, SCRAPE, SUMMARIZE, AND PRINT ---
     if top_headlines['status'] == 'ok':
