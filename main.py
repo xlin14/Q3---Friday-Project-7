@@ -10,7 +10,7 @@ from bs4 import BeautifulSoup # For parsing the article HTML
 import smtplib # For sending the email
 from email.message import EmailMessage # For formatting the email
 import ssl # For a secure connection
-from datetime import date # To add the date to the subject line
+from datetime import date, timedelta # UPDATED: Added timedelta to calculate past dates
 # import certifi # <-- REMOVED: Not needed for the unverified context fix
 
 
@@ -208,13 +208,16 @@ def send_email(email_subject, plain_text_body, html_body, recipient_email):
 # --- STEP 2: MAKE THE API CALL (Updated) ---
 print("Fetching latest news for 'technology'...")
 try:
-    # UPDATED: Changed 'q' parameter to 'category' and added 'country'.
-    # The NewsAPI free plan does not support the 'q' parameter on the /top-headlines endpoint.
-    # We must use 'category' or 'sources'.
-    top_headlines = newsapi.get_top_headlines(category='technology',
-                                              country='us', # Category works best when combined with country
-                                              language='en',
-                                              page_size=5) # Reduced to 5 for testing summaries
+    # --- UPDATED: Switched to 'everything' endpoint for a monthly newsletter ---
+    # Calculate the date 30 days ago for our search
+    thirty_days_ago = (date.today() - timedelta(days=30)).isoformat()
+    
+    # Use /v2/everything to get top articles from the past month
+    top_headlines = newsapi.get_everything(q='technology',
+                                           from_param=thirty_days_ago, # Get articles from this date
+                                           language='en',
+                                           sort_by='popularity', # Get the most popular articles
+                                           page_size=5) # Still 5 for testing
 
     # --- STEP 3: PROCESS, SCRAPE, SUMMARIZE, AND PRINT ---
     if top_headlines['status'] == 'ok':
@@ -275,9 +278,9 @@ try:
             
             # --- NEW: After the loop, check if we have summaries to send ---
             if plain_text_summaries:
-                # Format the email subject with today's date
-                today_str = date.today().strftime("%B %d, %Y")
-                email_subject = f"Your Tech News Summary - {today_str}"
+                # UPDATED: Changed email subject for a monthly newsletter
+                today_str = date.today().strftime("%B %Y") # Format as "Month Year"
+                email_subject = f"Your Monthly Tech News Summary - {today_str}"
                 
                 # --- Create the PLAIN-TEXT body ---
                 plain_text_body = "Here are your top tech stories:\n\n" + \
@@ -311,6 +314,11 @@ try:
                             padding-bottom: 20px;
                             border-bottom: 2px solid #eeeeee;
                         }}
+                        .subheader {{
+                            font-size: 18px;
+                            color: #777777;
+                            margin: -20px 0 30px 0;
+                        }}
                         a {{
                             color: #007bff;
                             text-decoration: none;
@@ -320,7 +328,10 @@ try:
                 <body>
                     <div class="container">
                         <div class="header">
-                            Your Tech News Summary
+                            Your Monthly Tech News
+                        </div>
+                        <div class="subheader">
+                            Top stories for {today_str}
                         </div>
                         {''.join(html_summaries)}
                     </div>
