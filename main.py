@@ -61,7 +61,7 @@ if not EMAIL_ADDRESS or not EMAIL_PASSWORD or not RECIPIENT_EMAIL:
     print("--- ERROR: Email credentials not found ---")
     print("Please check your '.env' file.")
     print("It must contain:")
-    print("SENDER_EMAIL='your.email@gmail.com'") # UPDATED
+    print("SAN_EMAIL='your.email@gmail.com'") # UPDATED
     print("SENDER_APP_PASSWORD='your-16-character-app-password'") # UPDATED
     print("RECIPIENT_EMAIL='email.to.send.to@example.com'")
     print("----------------------------------------")
