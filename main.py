@@ -136,7 +136,11 @@ def summarize_text(text_to_summarize):
 # --- STEP 2: MAKE THE API CALL (Updated) ---
 print("Fetching latest news for 'technology'...")
 try:
-    top_headlines = newsapi.get_top_headlines(q='technology',
+    # UPDATED: Changed 'q' parameter to 'category' and added 'country'.
+    # The NewsAPI free plan does not support the 'q' parameter on the /top-headlines endpoint.
+    # We must use 'category' or 'sources'.
+    top_headlines = newsapi.get_top_headlines(category='technology',
+                                              country='us', # Category works best when combined with country
                                               language='en',
                                               page_size=5) # Reduced to 5 for testing summaries
 
